@@ -172,6 +172,7 @@ const WebSocketConnection = () => {
   const [pairs, setPairs] = useState([]);
   const [isNewItem, setIsNewItem] = useState(false);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
+  const [isInitialConnection, setIsInitialConnection] = useState(true);
 
   const connectWebSocket = () => {
     // Create WebSocket connection
@@ -183,6 +184,7 @@ const WebSocketConnection = () => {
     ws.onopen = () => {
       setConnectionStatus("connected");
       setReconnectAttempt(0);
+      setIsInitialConnection(false);
       console.log("Connected to WebSocket server");
     };
 
@@ -255,9 +257,13 @@ const WebSocketConnection = () => {
 
   return (
     <Page>
-      {connectionStatus === "disconnected" ? (
+      {isInitialConnection && connectionStatus === "disconnected" ? (
         <ConnectionStatus>
           <StatusText>Connecting to server...</StatusText>
+        </ConnectionStatus>
+      ) : connectionStatus === "error" ? (
+        <ConnectionStatus>
+          <StatusText>Connection error. Attempting to reconnect...</StatusText>
         </ConnectionStatus>
       ) : pairs.length === 0 ? (
         <ConnectionStatus>
