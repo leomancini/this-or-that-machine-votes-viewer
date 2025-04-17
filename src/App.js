@@ -1,18 +1,335 @@
-import React from "react";
-import styled from "styled-components";
+import React, { useEffect, useState } from "react";
+import styled, { keyframes } from "styled-components";
+
+const slideDown = keyframes`
+  from {
+    transform: translateY(-11rem);
+  }
+  to {
+    transform: translateY(0);
+  }
+`;
+
+const fadeIn = keyframes`
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+`;
 
 const Page = styled.div`
   display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  font-size: 24px;
-  color: #333;
+  flex-direction: column;
+  gap: 2.125rem;
+  width: calc(100vw - 4rem);
+  height: calc(100vh - 4rem);
+  padding: 2rem;
 `;
 
-function App() {
-  return <Page>Hello world!</Page>;
-}
+const ConnectionStatus = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+`;
 
-export default App;
+const StatusText = styled.p`
+  font-size: 2rem;
+  color: rgba(255, 255, 255, 0.5);
+`;
 
+const VoteItem = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+`;
+
+const NewVoteItem = styled(VoteItem)`
+  animation: ${fadeIn} 0.5s ease-out 0.2s forwards;
+  opacity: 0;
+`;
+
+const VoteItemsContainer = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2.125rem;
+  animation: ${(props) => (props.isNewItem ? slideDown : "none")} 0.5s ease-out
+    forwards;
+`;
+
+const OptionsContainer = styled.div`
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  height: 11rem;
+`;
+
+const Option = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+`;
+
+const ImageContainer = styled.div`
+  height: 100%;
+  border-radius: ${(props) =>
+    props.percentage === 0
+      ? "0.75rem"
+      : props.left
+      ? "0.75rem 0 0 0.75rem"
+      : "0 0.75rem 0.75rem 0"};
+  overflow: hidden;
+  position: relative;
+`;
+
+const OptionImage = styled.img`
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+`;
+
+const BarContainer = styled.div`
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  flex: 1;
+  display: flex;
+  gap: 2rem;
+`;
+
+const BlurredBackground = styled.div`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: url(${(props) => props.imageUrl});
+  background-size: cover;
+  background-position: center;
+  filter: blur(50px) brightness(0.8);
+  transform: scale(2);
+  width: 100%;
+  height: 100%;
+  min-width: 200px;
+  min-height: 100px;
+  z-index: 0;
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.3);
+  }
+`;
+
+const Bar = styled.div`
+  height: 100%;
+  width: ${(props) => props.percentage}%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  ${(props) =>
+    props.left
+      ? `
+      border-top-right-radius: 1rem;
+      border-bottom-right-radius: 1rem;
+    `
+      : `
+      border-top-left-radius: 1rem;
+      border-bottom-left-radius: 1rem;
+    `}
+  ${(props) =>
+    props.percentage === 0 &&
+    `
+    background-color: transparent;
+  `}
+`;
+
+const BarLabel = styled.div`
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  color: white;
+  font-weight: bold;
+  font-size: 1.5rem;
+  z-index: 2;
+  ${(props) => (props.left ? "left: 1.5rem;" : "right: 1.5rem;")}
+  ${(props) => props.percentage === 0 && "display: none;"}
+`;
+
+const WebSocketConnection = () => {
+  const [socket, setSocket] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState("disconnected");
+  const [pairs, setPairs] = useState([]);
+  const [isNewItem, setIsNewItem] = useState(false);
+  const [reconnectAttempt, setReconnectAttempt] = useState(0);
+
+  const connectWebSocket = () => {
+    // Create WebSocket connection
+    const ws = new WebSocket(
+      "wss://socket.this-or-that-machine-server.noshado.ws/ws"
+    );
+
+    // Connection opened
+    ws.onopen = () => {
+      setConnectionStatus("connected");
+      setReconnectAttempt(0);
+      console.log("Connected to WebSocket server");
+    };
+
+    // Listen for messages
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log("Full message data:", data);
+        console.log("Data type:", data.type);
+        console.log("Data content:", data.data);
+
+        if (data.type === "vote") {
+          setIsNewItem(true);
+          // Update pairs, keeping only the last 5
+          setPairs((prevPairs) => {
+            const newPairs = [data.data, ...prevPairs];
+            return newPairs.slice(0, 5);
+          });
+          // Reset the new item flag after animation
+          setTimeout(() => setIsNewItem(false), 500);
+        }
+      } catch (error) {
+        console.error("Error parsing message:", error);
+      }
+    };
+
+    // Connection error
+    ws.onerror = (error) => {
+      setConnectionStatus("error");
+      console.error("WebSocket error:", error);
+      console.error("Error event:", {
+        type: error.type,
+        target: error.target,
+        currentTarget: error.currentTarget
+      });
+    };
+
+    // Connection closed
+    ws.onclose = (event) => {
+      setConnectionStatus("disconnected");
+      console.log(
+        "Disconnected from WebSocket server:",
+        event.code,
+        event.reason
+      );
+
+      // Attempt to reconnect with exponential backoff
+      const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30000);
+      console.log(`Attempting to reconnect in ${delay}ms...`);
+      setTimeout(() => {
+        setReconnectAttempt((prev) => prev + 1);
+        connectWebSocket();
+      }, delay);
+    };
+
+    setSocket(ws);
+  };
+
+  useEffect(() => {
+    connectWebSocket();
+
+    // Cleanup function
+    return () => {
+      if (socket) {
+        socket.close();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <Page>
+      {connectionStatus === "disconnected" ? (
+        <ConnectionStatus>
+          <StatusText>Connecting to server...</StatusText>
+        </ConnectionStatus>
+      ) : pairs.length === 0 ? (
+        <ConnectionStatus>
+          <StatusText>Waiting for votes...</StatusText>
+        </ConnectionStatus>
+      ) : (
+        <VoteItemsContainer isNewItem={isNewItem}>
+          {pairs.map((pair, index) => {
+            const totalVotes = pair.option_1.count + pair.option_2.count;
+            const option1Percentage =
+              totalVotes > 0
+                ? Math.round((pair.option_1.count / totalVotes) * 100)
+                : 0;
+            const option2Percentage =
+              totalVotes > 0
+                ? Math.round((pair.option_2.count / totalVotes) * 100)
+                : 0;
+
+            const VoteItemComponent = index === 0 ? NewVoteItem : VoteItem;
+
+            return (
+              <VoteItemComponent key={pair.pair_id}>
+                <OptionsContainer>
+                  <Option>
+                    <ImageContainer left percentage={option1Percentage}>
+                      <OptionImage
+                        src={pair.option_1.url}
+                        alt={pair.option_1.value}
+                      />
+                    </ImageContainer>
+                  </Option>
+                  {totalVotes > 0 ? (
+                    <BarContainer>
+                      <Bar percentage={option1Percentage} left>
+                        <BlurredBackground imageUrl={pair.option_1.url} />
+                        <BarLabel left percentage={option1Percentage}>
+                          {option1Percentage}%
+                        </BarLabel>
+                      </Bar>
+                      <Bar percentage={option2Percentage}>
+                        <BlurredBackground imageUrl={pair.option_2.url} />
+                        <BarLabel percentage={option2Percentage}>
+                          {option2Percentage}%
+                        </BarLabel>
+                      </Bar>
+                    </BarContainer>
+                  ) : (
+                    <BarContainer>
+                      <Bar percentage={0} left>
+                        <BarLabel left>0%</BarLabel>
+                      </Bar>
+                      <Bar percentage={0}>
+                        <BarLabel>0%</BarLabel>
+                      </Bar>
+                    </BarContainer>
+                  )}
+                  <Option>
+                    <ImageContainer percentage={option2Percentage}>
+                      <OptionImage
+                        src={pair.option_2.url}
+                        alt={pair.option_2.value}
+                      />
+                    </ImageContainer>
+                  </Option>
+                </OptionsContainer>
+              </VoteItemComponent>
+            );
+          })}
+        </VoteItemsContainer>
+      )}
+    </Page>
+  );
+};
+
+export default WebSocketConnection;
