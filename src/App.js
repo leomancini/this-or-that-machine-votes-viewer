@@ -202,7 +202,7 @@ const WebSocketConnection = () => {
   const connectWebSocket = () => {
     // Create WebSocket connection
     const ws = new WebSocket(
-      "wss://socket.this-or-that-machine-server.noshado.ws/ws"
+      "wss://socket.this-or-that-machine-server.noshado.ws"
     );
 
     // Connection opened
