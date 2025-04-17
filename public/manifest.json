@@ -1,0 +1,9 @@
+{
+  "short_name": "This or That Machine Votes Viewer",
+  "name": "This or That Machine Votes Viewer",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff"
+}
+
