@@ -1,5 +1,24 @@
 import React, { useEffect, useState } from "react";
-import styled, { keyframes } from "styled-components";
+import styled, {
+  keyframes,
+  StyleSheetManager,
+  createGlobalStyle
+} from "styled-components";
+import isPropValid from "@emotion/is-prop-valid";
+
+const GlobalStyle = createGlobalStyle`
+  html, body {
+    overflow: hidden;
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+  ::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
+  }
+`;
 
 const slideDown = keyframes`
   from {
@@ -26,6 +45,12 @@ const Page = styled.div`
   width: calc(100vw - 4rem);
   height: calc(100vh - 4rem);
   padding: 2rem;
+  overflow: hidden;
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+  &::-webkit-scrollbar {
+    display: none; /* Chrome, Safari and Opera */
+  }
 `;
 
 const ConnectionStatus = styled.div`
@@ -185,23 +210,19 @@ const WebSocketConnection = () => {
       setConnectionStatus("connected");
       setReconnectAttempt(0);
       setIsInitialConnection(false);
-      console.log("Connected to WebSocket server");
     };
 
     // Listen for messages
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        console.log("Full message data:", data);
-        console.log("Data type:", data.type);
-        console.log("Data content:", data.data);
 
         if (data.type === "vote") {
           setIsNewItem(true);
-          // Update pairs, keeping only the last 5
+          // Update pairs, keeping only the last 6
           setPairs((prevPairs) => {
             const newPairs = [data.data, ...prevPairs];
-            return newPairs.slice(0, 5);
+            return newPairs.slice(0, 6);
           });
           // Reset the new item flag after animation
           setTimeout(() => setIsNewItem(false), 500);
@@ -225,15 +246,9 @@ const WebSocketConnection = () => {
     // Connection closed
     ws.onclose = (event) => {
       setConnectionStatus("disconnected");
-      console.log(
-        "Disconnected from WebSocket server:",
-        event.code,
-        event.reason
-      );
 
       // Attempt to reconnect with exponential backoff
       const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30000);
-      console.log(`Attempting to reconnect in ${delay}ms...`);
       setTimeout(() => {
         setReconnectAttempt((prev) => prev + 1);
         connectWebSocket();
@@ -256,85 +271,90 @@ const WebSocketConnection = () => {
   }, []);
 
   return (
-    <Page>
-      {isInitialConnection && connectionStatus === "disconnected" ? (
-        <ConnectionStatus>
-          <StatusText>Connecting to server...</StatusText>
-        </ConnectionStatus>
-      ) : connectionStatus === "error" ? (
-        <ConnectionStatus>
-          <StatusText>Connection error. Attempting to reconnect...</StatusText>
-        </ConnectionStatus>
-      ) : pairs.length === 0 ? (
-        <ConnectionStatus>
-          <StatusText>Waiting for votes...</StatusText>
-        </ConnectionStatus>
-      ) : (
-        <VoteItemsContainer isNewItem={isNewItem}>
-          {pairs.map((pair, index) => {
-            const totalVotes = pair.option_1.count + pair.option_2.count;
-            const option1Percentage =
-              totalVotes > 0
-                ? Math.round((pair.option_1.count / totalVotes) * 100)
-                : 0;
-            const option2Percentage =
-              totalVotes > 0
-                ? Math.round((pair.option_2.count / totalVotes) * 100)
-                : 0;
+    <StyleSheetManager shouldForwardProp={isPropValid}>
+      <GlobalStyle />
+      <Page>
+        {isInitialConnection && connectionStatus === "disconnected" ? (
+          <ConnectionStatus>
+            <StatusText>Connecting to server...</StatusText>
+          </ConnectionStatus>
+        ) : connectionStatus === "error" ? (
+          <ConnectionStatus>
+            <StatusText>
+              Connection error. Attempting to reconnect...
+            </StatusText>
+          </ConnectionStatus>
+        ) : pairs.length === 0 ? (
+          <ConnectionStatus>
+            <StatusText>Waiting for votes...</StatusText>
+          </ConnectionStatus>
+        ) : (
+          <VoteItemsContainer isNewItem={isNewItem}>
+            {pairs.map((pair, index) => {
+              const totalVotes = pair.option_1.count + pair.option_2.count;
+              const option1Percentage =
+                totalVotes > 0
+                  ? Math.round((pair.option_1.count / totalVotes) * 100)
+                  : 0;
+              const option2Percentage =
+                totalVotes > 0
+                  ? Math.round((pair.option_2.count / totalVotes) * 100)
+                  : 0;
 
-            const VoteItemComponent = index === 0 ? NewVoteItem : VoteItem;
+              const VoteItemComponent = index === 0 ? NewVoteItem : VoteItem;
 
-            return (
-              <VoteItemComponent key={pair.pair_id}>
-                <OptionsContainer>
-                  <Option>
-                    <ImageContainer left percentage={option1Percentage}>
-                      <OptionImage
-                        src={pair.option_1.url}
-                        alt={pair.option_1.value}
-                      />
-                    </ImageContainer>
-                  </Option>
-                  {totalVotes > 0 ? (
-                    <BarContainer>
-                      <Bar percentage={option1Percentage} left>
-                        <BlurredBackground imageUrl={pair.option_1.url} />
-                        <BarLabel left percentage={option1Percentage}>
-                          {option1Percentage}%
-                        </BarLabel>
-                      </Bar>
-                      <Bar percentage={option2Percentage}>
-                        <BlurredBackground imageUrl={pair.option_2.url} />
-                        <BarLabel percentage={option2Percentage}>
-                          {option2Percentage}%
-                        </BarLabel>
-                      </Bar>
-                    </BarContainer>
-                  ) : (
-                    <BarContainer>
-                      <Bar percentage={0} left>
-                        <BarLabel left>0%</BarLabel>
-                      </Bar>
-                      <Bar percentage={0}>
-                        <BarLabel>0%</BarLabel>
-                      </Bar>
-                    </BarContainer>
-                  )}
-                  <Option>
-                    <ImageContainer percentage={option2Percentage}>
-                      <OptionImage
-                        src={pair.option_2.url}
-                        alt={pair.option_2.value}
-                      />
-                    </ImageContainer>
-                  </Option>
-                </OptionsContainer>
-              </VoteItemComponent>
-            );
-          })}
-        </VoteItemsContainer>
-      )}
-    </Page>
+              return (
+                <VoteItemComponent key={pair.pair_id}>
+                  <OptionsContainer>
+                    <Option>
+                      <ImageContainer left percentage={option1Percentage}>
+                        <OptionImage
+                          src={pair.option_1.url}
+                          alt={pair.option_1.value}
+                        />
+                      </ImageContainer>
+                    </Option>
+                    {totalVotes > 0 ? (
+                      <BarContainer>
+                        <Bar percentage={option1Percentage} left>
+                          <BlurredBackground imageUrl={pair.option_1.url} />
+                          <BarLabel left percentage={option1Percentage}>
+                            {option1Percentage}%
+                          </BarLabel>
+                        </Bar>
+                        <Bar percentage={option2Percentage}>
+                          <BlurredBackground imageUrl={pair.option_2.url} />
+                          <BarLabel percentage={option2Percentage}>
+                            {option2Percentage}%
+                          </BarLabel>
+                        </Bar>
+                      </BarContainer>
+                    ) : (
+                      <BarContainer>
+                        <Bar percentage={0} left>
+                          <BarLabel left>0%</BarLabel>
+                        </Bar>
+                        <Bar percentage={0}>
+                          <BarLabel>0%</BarLabel>
+                        </Bar>
+                      </BarContainer>
+                    )}
+                    <Option>
+                      <ImageContainer percentage={option2Percentage}>
+                        <OptionImage
+                          src={pair.option_2.url}
+                          alt={pair.option_2.value}
+                        />
+                      </ImageContainer>
+                    </Option>
+                  </OptionsContainer>
+                </VoteItemComponent>
+              );
+            })}
+          </VoteItemsContainer>
+        )}
+      </Page>
+    </StyleSheetManager>
   );
 };
 
