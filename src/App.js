@@ -47,7 +47,7 @@ const VoteItem = styled.div`
 `;
 
 const NewVoteItem = styled(VoteItem)`
-  animation: ${fadeIn} 0.5s ease-out 0.2s forwards;
+  animation: ${fadeIn} 0.5s cubic-bezier(0, 0, 0.2, 1) 0.2s forwards;
   opacity: 0;
 `;
 
@@ -55,8 +55,8 @@ const VoteItemsContainer = styled.div`
   display: flex;
   flex-direction: column;
   gap: 2.125rem;
-  animation: ${(props) => (props.isNewItem ? slideDown : "none")} 0.5s ease-out
-    forwards;
+  animation: ${(props) => (props.isNewItem ? slideDown : "none")} 0.5s
+    cubic-bezier(0, 0, 0.2, 1) forwards;
 `;
 
 const OptionsContainer = styled.div`
