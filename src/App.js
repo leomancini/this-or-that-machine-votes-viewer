@@ -100,6 +100,8 @@ const Option = styled.div`
 
 const ImageContainer = styled.div`
   height: 100%;
+  min-width: 11rem;
+  min-height: 11rem;
   border-radius: ${(props) =>
     props.percentage === 0
       ? "0.75rem"
@@ -198,6 +200,38 @@ const WebSocketConnection = () => {
   const [isNewItem, setIsNewItem] = useState(false);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [isInitialConnection, setIsInitialConnection] = useState(true);
+  const [pendingVote, setPendingVote] = useState(null);
+
+  const preloadImages = (urls) => {
+    return Promise.all(
+      urls.map(
+        (url) =>
+          new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = resolve;
+            img.onerror = reject;
+            img.src = url;
+          })
+      )
+    );
+  };
+
+  const handleNewVote = async (data) => {
+    try {
+      // Preload both images
+      await preloadImages([data.option_1.url, data.option_2.url]);
+
+      // Once images are loaded, update the state
+      setPairs((prevPairs) => {
+        const newPairs = [data, ...prevPairs];
+        return newPairs.slice(0, 6);
+      });
+      setIsNewItem(true);
+      setTimeout(() => setIsNewItem(false), 500);
+    } catch (error) {
+      console.error("Error preloading images:", error);
+    }
+  };
 
   const connectWebSocket = () => {
     // Create WebSocket connection
@@ -218,14 +252,7 @@ const WebSocketConnection = () => {
         const data = JSON.parse(event.data);
 
         if (data.type === "vote") {
-          setIsNewItem(true);
-          // Update pairs, keeping only the last 6
-          setPairs((prevPairs) => {
-            const newPairs = [data.data, ...prevPairs];
-            return newPairs.slice(0, 6);
-          });
-          // Reset the new item flag after animation
-          setTimeout(() => setIsNewItem(false), 500);
+          handleNewVote(data.data);
         }
       } catch (error) {
         console.error("Error parsing message:", error);
