@@ -200,7 +200,6 @@ const WebSocketConnection = () => {
   const [isNewItem, setIsNewItem] = useState(false);
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [isInitialConnection, setIsInitialConnection] = useState(true);
-  const [pendingVote, setPendingVote] = useState(null);
 
   const preloadImages = (urls) => {
     return Promise.all(
