@@ -189,8 +189,16 @@ const BarLabel = styled.div`
   font-weight: bold;
   font-size: 1.5rem;
   z-index: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
   ${(props) => (props.left ? "left: 1.5rem;" : "right: 1.5rem;")}
   ${(props) => props.percentage === 0 && "display: none;"}
+`;
+
+const VoteCount = styled.span`
+  font-weight: 400;
+  opacity: 0.85;
 `;
 
 const MAX_VISIBLE = 6;
@@ -240,13 +248,15 @@ const PairsList = ({ pairs, isNewItem }) => (
                 <Bar percentage={option1Percentage} left>
                   <BlurredBackground imageUrl={pair.option_1.url} />
                   <BarLabel left percentage={option1Percentage}>
-                    {option1Percentage}%
+                    <span>{option1Percentage}%</span>
+                    <VoteCount>{pair.option_1.count}</VoteCount>
                   </BarLabel>
                 </Bar>
                 <Bar percentage={option2Percentage}>
                   <BlurredBackground imageUrl={pair.option_2.url} />
                   <BarLabel percentage={option2Percentage}>
-                    {option2Percentage}%
+                    <VoteCount>{pair.option_2.count}</VoteCount>
+                    <span>{option2Percentage}%</span>
                   </BarLabel>
                 </Bar>
               </BarContainer>
