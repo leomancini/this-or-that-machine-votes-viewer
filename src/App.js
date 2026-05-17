@@ -506,8 +506,8 @@ const Slideshow = ({ intervalMs = 5000 }) => {
 };
 
 const App = () => {
-  const params = new URLSearchParams(window.location.search);
-  const isSlideshow = params.get("slideshow") === "1";
+  const path = window.location.pathname.replace(/\/+$/, "");
+  const isSlideshow = path === "/slideshow";
   return isSlideshow ? <Slideshow /> : <WebSocketConnection />;
 };
 
