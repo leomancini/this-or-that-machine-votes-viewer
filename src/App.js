@@ -413,7 +413,7 @@ const Slideshow = ({ apiKey, intervalMs = 5000 }) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
       })
-      .then((data) => {
+      .then(async (data) => {
         if (cancelled) return;
         const usable = (data.votes || []).filter(
           (p) => p.option_1?.url && p.option_2?.url
@@ -422,8 +422,21 @@ const Slideshow = ({ apiKey, intervalMs = 5000 }) => {
           setLoadState("empty");
           return;
         }
+        const shuffled = shuffle([...usable]);
+        // Pre-fill the visible list so the page isn't empty on first paint.
+        const initial = shuffled.slice(0, MAX_VISIBLE);
+        const rest = shuffled.slice(MAX_VISIBLE);
+        try {
+          await preloadImages(
+            initial.flatMap((p) => [p.option_1.url, p.option_2.url])
+          );
+        } catch {
+          // Even if some preloads fail, render — img onerror will catch the rest.
+        }
+        if (cancelled) return;
         setAllPairs(usable);
-        queueRef.current = shuffle([...usable]);
+        queueRef.current = rest;
+        setVisible(initial);
         setLoadState("ready");
       })
       .catch((err) => {
@@ -475,11 +488,6 @@ const Slideshow = ({ apiKey, intervalMs = 5000 }) => {
       setIsNewItem(true);
       setTimeout(() => setIsNewItem(false), 500);
     };
-
-    // Show the first slide immediately so the page isn't empty for 5s.
-    if (visible.length === 0) {
-      advance();
-    }
 
     const id = setInterval(advance, intervalMs);
     return () => clearInterval(id);
