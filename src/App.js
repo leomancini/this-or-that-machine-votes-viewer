@@ -395,7 +395,7 @@ const shuffle = (arr) => {
   return arr;
 };
 
-const Slideshow = ({ intervalMs = 5000 }) => {
+const Slideshow = ({ apiKey, intervalMs = 5000 }) => {
   const [allPairs, setAllPairs] = useState([]);
   const [visible, setVisible] = useState([]);
   const [isNewItem, setIsNewItem] = useState(false);
@@ -405,7 +405,9 @@ const Slideshow = ({ intervalMs = 5000 }) => {
   useEffect(() => {
     let cancelled = false;
     fetch(
-      "https://this-or-that-machine-server.noshado.ws/votes/get-all-votes?limit=500&offset=0"
+      `https://this-or-that-machine-server.noshado.ws/votes/get-all-votes?limit=500&offset=0&key=${encodeURIComponent(
+        apiKey
+      )}`
     )
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -431,7 +433,7 @@ const Slideshow = ({ intervalMs = 5000 }) => {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [apiKey]);
 
   useEffect(() => {
     if (loadState !== "ready") return;
@@ -515,10 +517,172 @@ const Slideshow = ({ intervalMs = 5000 }) => {
   );
 };
 
+const API_BASE = "https://this-or-that-machine-server.noshado.ws";
+
+const LoginForm = styled.form`
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+`;
+
+const LoginInput = styled.input`
+  font-size: 1.25rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  color: white;
+  width: 22rem;
+  max-width: 80vw;
+  &:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+`;
+
+const LoginButton = styled.button`
+  font-size: 1.25rem;
+  padding: 0.75rem 2rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: white;
+  color: black;
+  cursor: pointer;
+  font-weight: 600;
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+`;
+
+const LoginError = styled.div`
+  color: #ff8080;
+  font-size: 1rem;
+`;
+
+const Login = ({ onAuthed }) => {
+  const [value, setValue] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const key = value.trim();
+    if (!key) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const r = await fetch(
+        `${API_BASE}/auth/validate-api-key?key=${encodeURIComponent(key)}`
+      );
+      const data = await r.json();
+      if (r.ok && data.valid) {
+        localStorage.setItem("apiKey", key);
+        onAuthed(key);
+      } else {
+        setError("Invalid API key");
+      }
+    } catch (err) {
+      setError("Could not reach server");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Page>
+      <LoginForm onSubmit={handleSubmit}>
+        <StatusText>Enter API key</StatusText>
+        <LoginInput
+          type="password"
+          autoFocus
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder="API key"
+        />
+        <LoginButton type="submit" disabled={submitting || !value.trim()}>
+          {submitting ? "Checking..." : "Continue"}
+        </LoginButton>
+        {error && <LoginError>{error}</LoginError>}
+      </LoginForm>
+    </Page>
+  );
+};
+
+const useApiKey = () => {
+  const [state, setState] = useState({
+    apiKey: null,
+    status: "checking" // "checking" | "needs_login" | "ready"
+  });
+
+  useEffect(() => {
+    const stored = localStorage.getItem("apiKey");
+    if (!stored) {
+      setState({ apiKey: null, status: "needs_login" });
+      return;
+    }
+    let cancelled = false;
+    fetch(
+      `${API_BASE}/auth/validate-api-key?key=${encodeURIComponent(stored)}`
+    )
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data.valid) {
+          setState({ apiKey: stored, status: "ready" });
+        } else {
+          localStorage.removeItem("apiKey");
+          setState({ apiKey: null, status: "needs_login" });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setState({ apiKey: null, status: "needs_login" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onAuthed = (key) => setState({ apiKey: key, status: "ready" });
+  return { ...state, onAuthed };
+};
+
+const SlideshowGate = () => {
+  const { apiKey, status, onAuthed } = useApiKey();
+
+  if (status === "checking") {
+    return (
+      <StyleSheetManager shouldForwardProp={isPropValid}>
+        <GlobalStyle />
+        <Page>
+          <ConnectionStatus>
+            <StatusText>Loading...</StatusText>
+          </ConnectionStatus>
+        </Page>
+      </StyleSheetManager>
+    );
+  }
+
+  if (status === "needs_login") {
+    return (
+      <StyleSheetManager shouldForwardProp={isPropValid}>
+        <GlobalStyle />
+        <Login onAuthed={onAuthed} />
+      </StyleSheetManager>
+    );
+  }
+
+  return <Slideshow apiKey={apiKey} />;
+};
+
 const App = () => {
   const path = window.location.pathname.replace(/\/+$/, "");
   const isSlideshow = path === "/slideshow";
-  return isSlideshow ? <Slideshow /> : <WebSocketConnection />;
+  return isSlideshow ? <SlideshowGate /> : <WebSocketConnection />;
 };
 
 export default App;
