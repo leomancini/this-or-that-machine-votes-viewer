@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import styled, {
   keyframes,
   StyleSheetManager,
@@ -193,6 +193,88 @@ const BarLabel = styled.div`
   ${(props) => props.percentage === 0 && "display: none;"}
 `;
 
+const MAX_VISIBLE = 6;
+
+const preloadImages = (urls) =>
+  Promise.all(
+    urls.map(
+      (url) =>
+        new Promise((resolve, reject) => {
+          if (!url) return resolve();
+          const img = new Image();
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = url;
+        })
+    )
+  );
+
+const PairsList = ({ pairs, isNewItem }) => (
+  <VoteItemsContainer isNewItem={isNewItem}>
+    {pairs.map((pair, index) => {
+      const totalVotes = pair.option_1.count + pair.option_2.count;
+      const option1Percentage =
+        totalVotes > 0
+          ? Math.round((pair.option_1.count / totalVotes) * 100)
+          : 0;
+      const option2Percentage =
+        totalVotes > 0
+          ? Math.round((pair.option_2.count / totalVotes) * 100)
+          : 0;
+
+      const VoteItemComponent = index === 0 ? NewVoteItem : VoteItem;
+
+      return (
+        <VoteItemComponent key={pair.pair_id}>
+          <OptionsContainer>
+            <Option>
+              <ImageContainer left percentage={option1Percentage}>
+                <OptionImage
+                  src={pair.option_1.url}
+                  alt={pair.option_1.value}
+                />
+              </ImageContainer>
+            </Option>
+            {totalVotes > 0 ? (
+              <BarContainer>
+                <Bar percentage={option1Percentage} left>
+                  <BlurredBackground imageUrl={pair.option_1.url} />
+                  <BarLabel left percentage={option1Percentage}>
+                    {option1Percentage}%
+                  </BarLabel>
+                </Bar>
+                <Bar percentage={option2Percentage}>
+                  <BlurredBackground imageUrl={pair.option_2.url} />
+                  <BarLabel percentage={option2Percentage}>
+                    {option2Percentage}%
+                  </BarLabel>
+                </Bar>
+              </BarContainer>
+            ) : (
+              <BarContainer>
+                <Bar percentage={0} left>
+                  <BarLabel left>0%</BarLabel>
+                </Bar>
+                <Bar percentage={0}>
+                  <BarLabel>0%</BarLabel>
+                </Bar>
+              </BarContainer>
+            )}
+            <Option>
+              <ImageContainer percentage={option2Percentage}>
+                <OptionImage
+                  src={pair.option_2.url}
+                  alt={pair.option_2.value}
+                />
+              </ImageContainer>
+            </Option>
+          </OptionsContainer>
+        </VoteItemComponent>
+      );
+    })}
+  </VoteItemsContainer>
+);
+
 const WebSocketConnection = () => {
   const [socket, setSocket] = useState(null);
   const [connectionStatus, setConnectionStatus] = useState("disconnected");
@@ -201,29 +283,13 @@ const WebSocketConnection = () => {
   const [reconnectAttempt, setReconnectAttempt] = useState(0);
   const [isInitialConnection, setIsInitialConnection] = useState(true);
 
-  const preloadImages = (urls) => {
-    return Promise.all(
-      urls.map(
-        (url) =>
-          new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = resolve;
-            img.onerror = reject;
-            img.src = url;
-          })
-      )
-    );
-  };
-
   const handleNewVote = async (data) => {
     try {
-      // Preload both images
       await preloadImages([data.option_1.url, data.option_2.url]);
 
-      // Once images are loaded, update the state
       setPairs((prevPairs) => {
         const newPairs = [data, ...prevPairs];
-        return newPairs.slice(0, 6);
+        return newPairs.slice(0, MAX_VISIBLE);
       });
       setIsNewItem(true);
       setTimeout(() => setIsNewItem(false), 500);
@@ -233,23 +299,19 @@ const WebSocketConnection = () => {
   };
 
   const connectWebSocket = () => {
-    // Create WebSocket connection
     const ws = new WebSocket(
       "wss://socket.this-or-that-machine-server.noshado.ws"
     );
 
-    // Connection opened
     ws.onopen = () => {
       setConnectionStatus("connected");
       setReconnectAttempt(0);
       setIsInitialConnection(false);
     };
 
-    // Listen for messages
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-
         if (data.type === "vote") {
           handleNewVote(data.data);
         }
@@ -258,22 +320,13 @@ const WebSocketConnection = () => {
       }
     };
 
-    // Connection error
     ws.onerror = (error) => {
       setConnectionStatus("error");
       console.error("WebSocket error:", error);
-      console.error("Error event:", {
-        type: error.type,
-        target: error.target,
-        currentTarget: error.currentTarget
-      });
     };
 
-    // Connection closed
-    ws.onclose = (event) => {
+    ws.onclose = () => {
       setConnectionStatus("disconnected");
-
-      // Attempt to reconnect with exponential backoff
       const delay = Math.min(1000 * Math.pow(2, reconnectAttempt), 30000);
       setTimeout(() => {
         setReconnectAttempt((prev) => prev + 1);
@@ -286,102 +339,176 @@ const WebSocketConnection = () => {
 
   useEffect(() => {
     connectWebSocket();
-
-    // Cleanup function
     return () => {
-      if (socket) {
-        socket.close();
-      }
+      if (socket) socket.close();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  let body;
+  if (isInitialConnection && connectionStatus === "disconnected") {
+    body = (
+      <ConnectionStatus>
+        <StatusText>Connecting to server...</StatusText>
+      </ConnectionStatus>
+    );
+  } else if (connectionStatus === "error") {
+    body = (
+      <ConnectionStatus>
+        <StatusText>Connection error. Attempting to reconnect...</StatusText>
+      </ConnectionStatus>
+    );
+  } else if (pairs.length === 0) {
+    body = (
+      <ConnectionStatus>
+        <StatusText>Waiting for votes...</StatusText>
+      </ConnectionStatus>
+    );
+  } else {
+    body = <PairsList pairs={pairs} isNewItem={isNewItem} />;
+  }
+
   return (
     <StyleSheetManager shouldForwardProp={isPropValid}>
       <GlobalStyle />
-      <Page>
-        {isInitialConnection && connectionStatus === "disconnected" ? (
-          <ConnectionStatus>
-            <StatusText>Connecting to server...</StatusText>
-          </ConnectionStatus>
-        ) : connectionStatus === "error" ? (
-          <ConnectionStatus>
-            <StatusText>
-              Connection error. Attempting to reconnect...
-            </StatusText>
-          </ConnectionStatus>
-        ) : pairs.length === 0 ? (
-          <ConnectionStatus>
-            <StatusText>Waiting for votes...</StatusText>
-          </ConnectionStatus>
-        ) : (
-          <VoteItemsContainer isNewItem={isNewItem}>
-            {pairs.map((pair, index) => {
-              const totalVotes = pair.option_1.count + pair.option_2.count;
-              const option1Percentage =
-                totalVotes > 0
-                  ? Math.round((pair.option_1.count / totalVotes) * 100)
-                  : 0;
-              const option2Percentage =
-                totalVotes > 0
-                  ? Math.round((pair.option_2.count / totalVotes) * 100)
-                  : 0;
-
-              const VoteItemComponent = index === 0 ? NewVoteItem : VoteItem;
-
-              return (
-                <VoteItemComponent key={pair.pair_id}>
-                  <OptionsContainer>
-                    <Option>
-                      <ImageContainer left percentage={option1Percentage}>
-                        <OptionImage
-                          src={pair.option_1.url}
-                          alt={pair.option_1.value}
-                        />
-                      </ImageContainer>
-                    </Option>
-                    {totalVotes > 0 ? (
-                      <BarContainer>
-                        <Bar percentage={option1Percentage} left>
-                          <BlurredBackground imageUrl={pair.option_1.url} />
-                          <BarLabel left percentage={option1Percentage}>
-                            {option1Percentage}%
-                          </BarLabel>
-                        </Bar>
-                        <Bar percentage={option2Percentage}>
-                          <BlurredBackground imageUrl={pair.option_2.url} />
-                          <BarLabel percentage={option2Percentage}>
-                            {option2Percentage}%
-                          </BarLabel>
-                        </Bar>
-                      </BarContainer>
-                    ) : (
-                      <BarContainer>
-                        <Bar percentage={0} left>
-                          <BarLabel left>0%</BarLabel>
-                        </Bar>
-                        <Bar percentage={0}>
-                          <BarLabel>0%</BarLabel>
-                        </Bar>
-                      </BarContainer>
-                    )}
-                    <Option>
-                      <ImageContainer percentage={option2Percentage}>
-                        <OptionImage
-                          src={pair.option_2.url}
-                          alt={pair.option_2.value}
-                        />
-                      </ImageContainer>
-                    </Option>
-                  </OptionsContainer>
-                </VoteItemComponent>
-              );
-            })}
-          </VoteItemsContainer>
-        )}
-      </Page>
+      <Page>{body}</Page>
     </StyleSheetManager>
   );
 };
 
-export default WebSocketConnection;
+// Fisher–Yates shuffle (in-place).
+const shuffle = (arr) => {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+};
+
+const Slideshow = ({ intervalMs = 5000 }) => {
+  const [allPairs, setAllPairs] = useState([]);
+  const [visible, setVisible] = useState([]);
+  const [isNewItem, setIsNewItem] = useState(false);
+  const [loadState, setLoadState] = useState("loading");
+  const queueRef = useRef([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(
+      "https://this-or-that-machine-server.noshado.ws/votes/get-all-votes?limit=500&offset=0"
+    )
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        if (cancelled) return;
+        const usable = (data.votes || []).filter(
+          (p) => p.option_1?.url && p.option_2?.url
+        );
+        if (usable.length === 0) {
+          setLoadState("empty");
+          return;
+        }
+        setAllPairs(usable);
+        queueRef.current = shuffle([...usable]);
+        setLoadState("ready");
+      })
+      .catch((err) => {
+        console.error("Slideshow fetch error:", err);
+        if (!cancelled) setLoadState("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loadState !== "ready") return;
+
+    const advance = async () => {
+      const currentIds = new Set(visible.map((p) => p.pair_id));
+
+      // Refill the queue when it's exhausted.
+      if (queueRef.current.length === 0) {
+        queueRef.current = shuffle([...allPairs]);
+      }
+
+      // Pull the next candidate that isn't currently on screen.
+      let next = null;
+      const skipped = [];
+      while (queueRef.current.length > 0) {
+        const candidate = queueRef.current.shift();
+        if (!currentIds.has(candidate.pair_id)) {
+          next = candidate;
+          break;
+        }
+        skipped.push(candidate);
+      }
+      // Skipped candidates go to the end so they get a turn later.
+      queueRef.current.push(...skipped);
+
+      // Edge case: only have MAX_VISIBLE or fewer pairs in total — at some
+      // point every pool entry is on screen. Then there's no valid candidate;
+      // just no-op this tick.
+      if (!next) return;
+
+      try {
+        await preloadImages([next.option_1.url, next.option_2.url]);
+      } catch {
+        // If preload fails, still show — the <img> error fallback will trigger.
+      }
+
+      setVisible((prev) => [next, ...prev].slice(0, MAX_VISIBLE));
+      setIsNewItem(true);
+      setTimeout(() => setIsNewItem(false), 500);
+    };
+
+    // Show the first slide immediately so the page isn't empty for 5s.
+    if (visible.length === 0) {
+      advance();
+    }
+
+    const id = setInterval(advance, intervalMs);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadState, visible]);
+
+  let body;
+  if (loadState === "loading") {
+    body = (
+      <ConnectionStatus>
+        <StatusText>Loading votes...</StatusText>
+      </ConnectionStatus>
+    );
+  } else if (loadState === "error") {
+    body = (
+      <ConnectionStatus>
+        <StatusText>Failed to load votes.</StatusText>
+      </ConnectionStatus>
+    );
+  } else if (loadState === "empty" || visible.length === 0) {
+    body = (
+      <ConnectionStatus>
+        <StatusText>No votes yet.</StatusText>
+      </ConnectionStatus>
+    );
+  } else {
+    body = <PairsList pairs={visible} isNewItem={isNewItem} />;
+  }
+
+  return (
+    <StyleSheetManager shouldForwardProp={isPropValid}>
+      <GlobalStyle />
+      <Page>{body}</Page>
+    </StyleSheetManager>
+  );
+};
+
+const App = () => {
+  const params = new URLSearchParams(window.location.search);
+  const isSlideshow = params.get("slideshow") === "1";
+  return isSlideshow ? <Slideshow /> : <WebSocketConnection />;
+};
+
+export default App;
