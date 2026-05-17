@@ -191,7 +191,7 @@ const BarLabel = styled.div`
   z-index: 2;
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
+  gap: 0.875rem;
   ${(props) => (props.left ? "left: 1.5rem;" : "right: 1.5rem;")}
   ${(props) => props.percentage === 0 && "display: none;"}
 `;
