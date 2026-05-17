@@ -620,22 +620,31 @@ const useApiKey = () => {
   });
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("apiKey");
     const stored = localStorage.getItem("apiKey");
-    if (!stored) {
+    const candidate = fromUrl || stored;
+
+    if (!candidate) {
       setState({ apiKey: null, status: "needs_login" });
       return;
     }
+
     let cancelled = false;
     fetch(
-      `${API_BASE}/auth/validate-api-key?key=${encodeURIComponent(stored)}`
+      `${API_BASE}/auth/validate-api-key?key=${encodeURIComponent(candidate)}`
     )
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
         if (data.valid) {
-          setState({ apiKey: stored, status: "ready" });
+          // Cache to localStorage so future visits without the URL param work.
+          localStorage.setItem("apiKey", candidate);
+          setState({ apiKey: candidate, status: "ready" });
         } else {
-          localStorage.removeItem("apiKey");
+          // If the bad key came from the URL, leave any stored key alone —
+          // only clear stored when the stored one itself is bad.
+          if (!fromUrl) localStorage.removeItem("apiKey");
           setState({ apiKey: null, status: "needs_login" });
         }
       })
